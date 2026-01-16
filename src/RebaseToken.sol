@@ -53,8 +53,16 @@ contract RebaseToken is ERC20 {
      */
     function mint(address _to, uint256 _amount) external {
         // TODO: Add access control (e.g, onlyVault)
-        _mintAccuredInterest(_to);
+
+        // Access control to be added
+        _mintAccruedInterest(_to); // Step 1: Mint any existing accrued interest for the user
+
+        // Step 2: Update the user's interest rate for future calculations if necessary
+        // This assumes s_interestRate in the current global interest rate.
+        // If the user already has a deposit, their rate might be updated.
         s_userInterestRate[_to] = s_interestRate;
+
+        // Step 3: Mint the newly deposited amount
         _mint(_to, _amount);
     }
 
@@ -75,6 +83,35 @@ contract RebaseToken is ERC20 {
         return principalBalance * growthFactor / PRECISION_FACTOR;
     }
 
+    /**
+     * @notice Burn the user tokens, e.g., when they withdraw from a vault or for cross-chain transfer.
+     * Handles burning the entire balance if _amount is type(uint256).max.
+     * @param _from The user address from which to burn tokens.
+     * @param _amount The amount of tokens to burn. Use type(uint256).max to burn all tokens.
+     */
+    function burn(address _from, uint256 _amount) external {
+        // Access control to be added as needed
+        uint256 currentTotalBalance = balanceOf(_from);
+
+        if (_amount == type(uint256).max) {
+            _amount = currentTotalBalance; // Set amount to full current balance
+        }
+
+        // Ensure _amount does not exceed actual balance after potential interest accrual
+        // This check is important expecially if _amount wasn't type(uint256).max
+        // _mintAccruedInterest will update the super.balanceOf(_from)
+        // So, after _mintAccruedInterest, super.balanceOf(_form) should be currentTotalBalance.
+        // The ERC20 _burn function will typically revert if _amount > super.balanceOf(_form)
+
+        _mintAccruedInterest(_from);
+
+        // At this point, super.balanceOf(_from) reflects the balance including all interest up to now.
+        // If _amount was type(uint256).max, then _amount == super.balanceOf(_from)
+        // If _amount was specific, super.balanceOf(_form) must be >= _amount for _burn to succeed.
+
+        _burn(_from, _amount);
+    }
+
     /*//////////////////////////////////////////////////////////////
                     PRIVATE & INTERNAL VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -83,13 +120,22 @@ contract RebaseToken is ERC20 {
      * @dev Updates the user's last updated timestamp.
      * @param _user The address of the user.
      */
-    function _mintAccuredInterest(address _user) internal {
-        // TODO: Implement full logic to calculate and mint actual interest tokens.
-        // The amount of interest to mint would  be:
-        // current_dynamic_balance - current_stored_principal_balance
-        // Then, _mint(_user, interest_amount_to_mint);
+    function _mintAccruedInterest(address _user) internal {
+        // (1) find their current balance of rebase tokens that have been minted to the user -> principle balance
+        uint256 previousPrincipleBalance = super.balanceOf(_user);
+
+        // (2) calculate their current balance including any interest -> balanceOf
+        uint256 currentBalance = balanceOf(_user);
+
+        // calculate the number of tokens that need to be minted to the user -> (2) - (1)
+        uint256 balanceIncrease = currentBalance - previousPrincipleBalance;
 
         s_userLastUpdatedTimestamp[_user] = block.timestamp;
+
+        if (balanceIncrease > 0) {
+            // We don't need to emit a custom event in _mintAccruedInterest because the underlying _mint call (from the ERC20 standard) already emits the standard Transfer event (from address 0x0 to the _user), which sufficiently logs the token creation.
+            _mint(_user, balanceIncrease); // inherited _mint function from ERC20
+        }
     }
 
     /**
