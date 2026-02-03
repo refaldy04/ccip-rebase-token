@@ -47,11 +47,15 @@ contract Vault {
         // 1. Effects (State changes occur first)
         // Burn the specified amount of tokens from the caller (msg.sender)
         // The RebaseToken's burn function should handle checks for sufficient balance.
-        i_rebaseToken.burn(msg.sender, _amount);
+        uint256 amountToRedeem = _amount;
+        if (_amount == type(uint256).max) {
+            amountToRedeem = i_rebaseToken.balanceOf(msg.sender);
+        }
+        i_rebaseToken.burn(msg.sender, amountToRedeem);
 
         // 2. Interactions (External calls / ETH transfer last)
         // Send the equivalent amount of ETH back to the user
-        (bool success,) = payable(msg.sender).call{value: _amount}("");
+        (bool success,) = payable(msg.sender).call{value: amountToRedeem}("");
 
         // Check if the ETH transfer succeeded
         if (!success) {
