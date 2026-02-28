@@ -167,7 +167,7 @@ contract RebaseTokenTest is Test {
     function testCannotCallMintAndBurn() public {
         vm.prank(user); // User does not have MINT_AND_BURN_ROLE
         vm.expectPartialRevert(bytes4(IAccessControl.AccessControlUnauthorizedAccount.selector));
-        rebaseToken.mint(user, 1 ether);
+        rebaseToken.mint(user, 1 ether, rebaseToken.getInterestRate());
 
         vm.prank(user);
         vm.expectPartialRevert(bytes4(IAccessControl.AccessControlUnauthorizedAccount.selector));
